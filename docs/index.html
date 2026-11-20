@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BANKO Safe GPU & Performance Tuners — HP & Dell Editions</title>
+  <style>
+    :root {
+      --bg-root: #0D0F14;
+      --bg-panel: #141821;
+      --bg-card: #1B202C;
+      --border: #262D3D;
+      --hp-cyan: #00B4D8;
+      --hp-cyan-glow: rgba(0, 180, 216, 0.22);
+      --dell-green: #00FF66;
+      --dell-green-glow: rgba(0, 255, 102, 0.18);
+      --danger: #FF3355;
+      --text: #F1F5F9;
+      --muted: #94A3B8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: radial-gradient(circle at 15% 15%, rgba(0, 180, 216, 0.10), transparent 40%),
+                  radial-gradient(circle at 85% 20%, rgba(0, 255, 102, 0.08), transparent 42%),
+                  var(--bg-root);
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 48px 24px 64px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 14px;
+    }
+
+    .lead {
+      max-width: 720px;
+      margin: 0 auto;
+      color: var(--muted);
+      font-size: 1.05rem;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+      gap: 24px;
+      margin-bottom: 40px;
+    }
+
+    .card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+
+    .card.hp:hover {
+      transform: translateY(-3px);
+      border-color: var(--hp-cyan);
+      box-shadow: 0 12px 36px var(--hp-cyan-glow);
+    }
+
+    .card.dell:hover {
+      transform: translateY(-3px);
+      border-color: var(--dell-green);
+      box-shadow: 0 12px 36px var(--dell-green-glow);
+    }
+
+    .brand-tag {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      padding: 4px 10px;
+      border-radius: 6px;
+      margin-bottom: 14px;
+      width: fit-content;
+    }
+
+    .hp .brand-tag {
+      background: rgba(0, 180, 216, 0.14);
+      color: var(--hp-cyan);
+      border: 1px solid rgba(0, 180, 216, 0.45);
+    }
+
+    .dell .brand-tag {
+      background: rgba(0, 255, 102, 0.12);
+      color: var(--dell-green);
+      border: 1px solid rgba(0, 255, 102, 0.45);
+    }
+
+    .card h2 {
+      font-size: 1.45rem;
+      margin-bottom: 8px;
+    }
+
+    .card p {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 18px;
+    }
+
+    .specs {
+      list-style: none;
+      margin-bottom: 24px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-size: 0.9rem;
+    }
+
+    .specs li {
+      padding: 5px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .specs li:last-child {
+      border-bottom: none;
+    }
+
+    .btn {
+      display: block;
+      text-align: center;
+      text-decoration: none;
+      font-weight: 800;
+      font-size: 1rem;
+      padding: 14px 20px;
+      border-radius: 10px;
+      transition: filter 0.15s ease, transform 0.15s ease;
+    }
+
+    .btn:hover {
+      filter: brightness(1.08);
+      transform: translateY(-1px);
+    }
+
+    .btn-hp {
+      background: var(--hp-cyan);
+      color: #0D0F14;
+      box-shadow: 0 0 22px var(--hp-cyan-glow);
+    }
+
+    .btn-dell {
+      background: var(--dell-green);
+      color: #0D0F14;
+      box-shadow: 0 0 22px var(--dell-green-glow);
+    }
+
+    .guardrails {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      margin-bottom: 32px;
+    }
+
+    .guardrails h3 {
+      font-size: 1.2rem;
+      margin-bottom: 16px;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 16px;
+    }
+
+    .mini {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+
+    .mini strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 0.95rem;
+    }
+
+    .mini span {
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    footer a {
+      color: var(--hp-cyan);
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="pill">Release v1.0.0 &bull; Windows 10 / 11 x64 &bull; Zero-Voltage Safe Tuning</div>
+      <h1>BANKO Safe GPU &amp; Performance Tuners</h1>
+      <p class="lead">
+        Brand-locked standalone Windows desktop utilities engineered with strict WMI OEM verification,
+        capped safe clock offsets, automatic 82&deg;C thermal cut-off, and one-click Reset to Stock.
+      </p>
+    </header>
+
+    <section class="cards">
+      <article class="card hp">
+        <div>
+          <span class="brand-tag">HP / HEWLETT-PACKARD LOCKED</span>
+          <h2>BANKO HP Safe Tuner</h2>
+          <p>
+            Verifies <code>Win32_ComputerSystem.Manufacturer</code> for <strong>HP</strong> or
+            <strong>Hewlett-Packard</strong> on startup and unlocks the Neon Cyan control deck.
+          </p>
+          <ul class="specs">
+            <li><strong>Binary:</strong> <code>BANKO_HP_Tuner.exe</code></li>
+            <li><strong>Accent Theme:</strong> Dark (<code>#0D0F14</code>) + Neon Cyan (<code>#00B4D8</code>)</li>
+            <li><strong>Safety Lock:</strong> Rejects non-HP hardware automatically</li>
+            <li><strong>Presets:</strong> Eco (+0/+0), Balanced (+75/+150), Max Safe (+120/+250)</li>
+          </ul>
+        </div>
+        <a
+          class="btn btn-hp"
+          href="https://github.com/hankobanko391/BANKO-Safe-OC-Tuners/releases/download/v1.0.0/BANKO_HP_Tuner.exe"
+        >
+          Download for HP Laptops
+        </a>
+      </article>
+
+      <article class="card dell">
+        <div>
+          <span class="brand-tag">DELL BRAND LOCKED</span>
+          <h2>BANKO Dell Safe Tuner</h2>
+          <p>
+            Verifies <code>Win32_ComputerSystem.Manufacturer</code> for <strong>Dell</strong>
+            on startup and unlocks the Neon Green control deck.
+          </p>
+          <ul class="specs">
+            <li><strong>Binary:</strong> <code>BANKO_Dell_Tuner.exe</code></li>
+            <li><strong>Accent Theme:</strong> Dark (<code>#0D0F14</code>) + Neon Green (<code>#00FF66</code>)</li>
+            <li><strong>Safety Lock:</strong> Rejects non-Dell hardware automatically</li>
+            <li><strong>Presets:</strong> Eco (+0/+0), Balanced (+75/+150), Max Safe (+120/+250)</li>
+          </ul>
+        </div>
+        <a
+          class="btn btn-dell"
+          href="https://github.com/hankobanko391/BANKO-Safe-OC-Tuners/releases/download/v1.0.0/BANKO_Dell_Tuner.exe"
+        >
+          Download for Dell Laptops
+        </a>
+      </article>
+    </section>
+
+    <section class="guardrails">
+      <h3>Built-In Hardware Safety Guardrails (Both Editions)</h3>
+      <div class="grid-4">
+        <div class="mini">
+          <strong>Zero Voltage Sliders</strong>
+          <span>Core voltage adjustment is omitted entirely to eliminate over-volting risk on mobile GPUs.</span>
+        </div>
+        <div class="mini">
+          <strong>82&deg;C Thermal Cut-Off</strong>
+          <span>Polls GPU temperature every 1000ms and automatically reverts to Stock / Eco Mode above 82&deg;C.</span>
+        </div>
+        <div class="mini">
+          <strong>Safe Offset Ceilings</strong>
+          <span>Balanced Boost (+75/+150 MHz) and Max Safe OC (+120/+250 MHz) via NVAPI / nvidia-smi + Windows Power fallback.</span>
+        </div>
+        <div class="mini">
+          <strong>1-Click Reset to Stock</strong>
+          <span>Prominent Reset button immediately restores factory clocks (-rgc/-rmc) and Balanced power plan.</span>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <p>
+        Source &amp; Releases:
+        <a href="https://github.com/hankobanko391/BANKO-Safe-OC-Tuners">hankobanko391/BANKO-Safe-OC-Tuners</a>
+        &bull;
+        <a href="https://github.com/hankobanko391/BANKO-Safe-OC-Tuners/releases/tag/v1.0.0">Release v1.0.0</a>
+      </p>
+    </footer>
+  </div>
+</body>
+</html>
