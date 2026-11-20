@@ -1,32 +1,28 @@
-# BANKO Safe GPU & Performance Tuners (`v1.0.0`)
+# BANKO Safe GPU & Performance Tuners (`v2.0.0`)
 
-Two brand-locked Windows desktop GPU & power tuning utilities built with Python and `customtkinter`, engineered with strict OEM WMI locking, zero-voltage overclock ceilings, `1000ms` thermal monitoring (`>82°C` automatic cut-off), and one-click stock reset.
+Two brand-locked Windows desktop GPU & power tuning applications styled with a modern **Steam / Epic Games launcher** interface and custom metallic/neon circular `.ico` desktop emblems.
 
 ## Live Download Page & Releases
 
 - **Download Portal (GitHub Pages):** https://hankobanko391.github.io/BANKO-Safe-OC-Tuners/
-- **Release v1.0.0:** https://github.com/hankobanko391/BANKO-Safe-OC-Tuners/releases/tag/v1.0.0
-  - `BANKO_HP_Tuner.exe` — HP / Hewlett-Packard Edition (`#0D0F14` Dark + `#00B4D8` Neon Cyan)
-  - `BANKO_Dell_Tuner.exe` — Dell Edition (`#0D0F14` Dark + `#00FF66` Neon Green)
+- **Release v2.0.0:** https://github.com/hankobanko391/BANKO-Safe-OC-Tuners/releases/tag/v2.0.0
+  - `BANKO_HP_Tuner.exe` — HP / Hewlett-Packard Edition (`#0D0F14` + Electric Cyan `#00B4D8`, custom `hp_icon.ico`)
+  - `BANKO_Dell_Tuner.exe` — Dell Edition (`#0D0F14` + Neon Emerald `#00FF66`, custom `dell_icon.ico`)
 
-## Safety Guardrails
+## What's New in v2.0.0
 
-1. **Strict WMI Brand Lock**: Checks `Win32_ComputerSystem.Manufacturer` on startup.
-   - `hp_tuner.py` unlocks **only** on `HP` / `Hewlett-Packard` systems.
-   - `dell_tuner.py` unlocks **only** on `Dell` systems.
-   - Non-matching OEM hardware displays a Hardware Safety Lock screen with tuning controls disabled.
-2. **Zero Voltage Sliders**: Voltage controls are omitted by design.
-3. **Three Safe Presets**:
-   - **Eco / Cool Mode**: Stock clocks (`+0 / +0 MHz`) + Windows Balanced power plan.
-   - **Balanced Boost**: `+75 MHz` Core / `+150 MHz` Memory safe offset via `nvidia-smi` / NVAPI wrapper with Windows High Performance power fallback.
-   - **Max Safe OC**: `+120 MHz` Core / `+250 MHz` Memory ceiling + Windows High Performance power plan.
-4. **Auto Thermal Cut-off (`1000ms`)**: Polls GPU temperature every second; if temperature exceeds `82°C`, automatically reverts to Stock / Eco Mode.
-5. **RESET TO STOCK**: High-visibility reset control restoring stock GPU clocks (`-rgc` / `-rmc`) and Balanced power plan.
+- **Custom Brand Desktop Icons**: Generated multi-size circular emblem `.ico` icons (`hp_icon.ico` & `dell_icon.ico`) via `generate_icons.py` (`Pillow`).
+- **Steam / Epic Launcher Layout**:
+  - **Left Sidebar Navigation (`#12151E`)**: Brand emblem, **TUNING PROFILES**, **LIVE TELEMETRY**, and **SAFETY & SPECS** tabs, plus bottom **HARDWARE LOCK STATUS** badge (`VERIFIED: HP` / `VERIFIED: DELL`).
+  - **Top Hero Banner**: Displays detected Laptop Model, GPU, and live GPU temperature & core/memory clock speeds.
+  - **Interactive Game-Launcher Profile Cards**: Side-by-side **ECO / COOL MODE**, **BALANCED BOOST**, and **MAX SAFE OC** cards with hover glow borders and **APPLIED** / **ACTIVATE** pill buttons.
+  - **Sleek Bottom Status Bar**: Live **Auto Thermal Guard (`82°C` cutoff)** indicator + bold **RESET TO STOCK** button.
 
 ## Building from Source
 
 ```powershell
 pip install -r requirements.txt
-pyinstaller --noconfirm --clean --onefile --noconsole --collect-all customtkinter --name BANKO_HP_Tuner hp_tuner.py
-pyinstaller --noconfirm --clean --onefile --noconsole --collect-all customtkinter --name BANKO_Dell_Tuner dell_tuner.py
+python generate_icons.py
+python -m PyInstaller --noconfirm --clean --onefile --noconsole --collect-all customtkinter --icon=hp_icon.ico --add-data "hp_icon.ico;." --name BANKO_HP_Tuner hp_tuner.py
+python -m PyInstaller --noconfirm --clean --onefile --noconsole --collect-all customtkinter --icon=dell_icon.ico --add-data "dell_icon.ico;." --name BANKO_Dell_Tuner dell_tuner.py
 ```

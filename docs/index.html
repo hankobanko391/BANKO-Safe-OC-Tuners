@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BANKO Safe GPU & Performance Tuners — HP & Dell Editions</title>
+  <title>BANKO Safe GPU & Performance Tuners v2.0.0 — HP & Dell Editions</title>
   <style>
     :root {
       --bg-root: #0D0F14;
@@ -11,11 +11,11 @@
       --bg-card: #1B202C;
       --border: #262D3D;
       --hp-cyan: #00B4D8;
-      --hp-cyan-glow: rgba(0, 180, 216, 0.22);
+      --hp-cyan-glow: rgba(0, 180, 216, 0.24);
       --dell-green: #00FF66;
-      --dell-green-glow: rgba(0, 255, 102, 0.18);
+      --dell-green-glow: rgba(0, 255, 102, 0.20);
       --danger: #FF3355;
-      --text: #F1F5F9;
+      --text: #F8FAFC;
       --muted: #94A3B8;
     }
 
@@ -26,8 +26,8 @@
     }
 
     body {
-      background: radial-gradient(circle at 15% 15%, rgba(0, 180, 216, 0.10), transparent 40%),
-                  radial-gradient(circle at 85% 20%, rgba(0, 255, 102, 0.08), transparent 42%),
+      background: radial-gradient(circle at 15% 15%, rgba(0, 180, 216, 0.12), transparent 40%),
+                  radial-gradient(circle at 85% 20%, rgba(0, 255, 102, 0.10), transparent 42%),
                   var(--bg-root);
       color: var(--text);
       font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -36,7 +36,7 @@
     }
 
     .container {
-      max-width: 1080px;
+      max-width: 1100px;
       margin: 0 auto;
       padding: 48px 24px 64px;
     }
@@ -61,14 +61,14 @@
     }
 
     h1 {
-      font-size: clamp(2rem, 4vw, 3rem);
+      font-size: clamp(2rem, 4vw, 3.1rem);
       font-weight: 800;
       letter-spacing: -0.02em;
       margin-bottom: 14px;
     }
 
     .lead {
-      max-width: 720px;
+      max-width: 740px;
       margin: 0 auto;
       color: var(--muted);
       font-size: 1.05rem;
@@ -164,7 +164,7 @@
       font-weight: 800;
       font-size: 1rem;
       padding: 14px 20px;
-      border-radius: 10px;
+      border-radius: 999px;
       transition: filter 0.15s ease, transform 0.15s ease;
     }
 
@@ -237,11 +237,12 @@
 <body>
   <div class="container">
     <header>
-      <div class="pill">Release v1.0.0 &bull; Windows 10 / 11 x64 &bull; Zero-Voltage Safe Tuning</div>
+      <div class="pill">Release v2.0.0 &bull; Steam / Epic Launcher UI &bull; Custom Emblem Icons</div>
       <h1>BANKO Safe GPU &amp; Performance Tuners</h1>
       <p class="lead">
-        Brand-locked standalone Windows desktop utilities engineered with strict WMI OEM verification,
-        capped safe clock offsets, automatic 82&deg;C thermal cut-off, and one-click Reset to Stock.
+        Modern gaming-launcher desktop utilities featuring custom metallic/neon desktop icons,
+        left sidebar navigation, live GPU Hero Banner telemetry, WMI hardware brand-locking,
+        automatic 82&deg;C thermal cut-off, and one-click Reset to Stock.
       </p>
     </header>
 
@@ -249,21 +250,21 @@
       <article class="card hp">
         <div>
           <span class="brand-tag">HP / HEWLETT-PACKARD LOCKED</span>
-          <h2>BANKO HP Safe Tuner</h2>
+          <h2>BANKO HP Safe Tuner v2.0.0</h2>
           <p>
             Verifies <code>Win32_ComputerSystem.Manufacturer</code> for <strong>HP</strong> or
-            <strong>Hewlett-Packard</strong> on startup and unlocks the Neon Cyan control deck.
+            <strong>Hewlett-Packard</strong> and unlocks the Electric Cyan launcher control deck.
           </p>
           <ul class="specs">
-            <li><strong>Binary:</strong> <code>BANKO_HP_Tuner.exe</code></li>
-            <li><strong>Accent Theme:</strong> Dark (<code>#0D0F14</code>) + Neon Cyan (<code>#00B4D8</code>)</li>
-            <li><strong>Safety Lock:</strong> Rejects non-HP hardware automatically</li>
+            <li><strong>Binary &amp; Icon:</strong> <code>BANKO_HP_Tuner.exe</code> (<code>hp_icon.ico</code>)</li>
+            <li><strong>Accent Theme:</strong> Launcher Dark (<code>#0D0F14</code>) + Electric Cyan (<code>#00B4D8</code>)</li>
+            <li><strong>Launcher Deck:</strong> Sidebar nav, Hero Banner, 3 hover-glow profile cards</li>
             <li><strong>Presets:</strong> Eco (+0/+0), Balanced (+75/+150), Max Safe (+120/+250)</li>
           </ul>
         </div>
         <a
           class="btn btn-hp"
-          href="https://github.com/hankobanko391/BANKO-Safe-OC-Tuners/releases/download/v1.0.0/BANKO_HP_Tuner.exe"
+          href="https://github.com/hankobanko391/BANKO-Safe-OC-Tuners/releases/download/v2.0.0/BANKO_HP_Tuner.exe"
         >
           Download for HP Laptops
         </a>
@@ -272,21 +273,21 @@
       <article class="card dell">
         <div>
           <span class="brand-tag">DELL BRAND LOCKED</span>
-          <h2>BANKO Dell Safe Tuner</h2>
+          <h2>BANKO Dell Safe Tuner v2.0.0</h2>
           <p>
             Verifies <code>Win32_ComputerSystem.Manufacturer</code> for <strong>Dell</strong>
-            on startup and unlocks the Neon Green control deck.
+            and unlocks the Neon Emerald launcher control deck.
           </p>
           <ul class="specs">
-            <li><strong>Binary:</strong> <code>BANKO_Dell_Tuner.exe</code></li>
-            <li><strong>Accent Theme:</strong> Dark (<code>#0D0F14</code>) + Neon Green (<code>#00FF66</code>)</li>
-            <li><strong>Safety Lock:</strong> Rejects non-Dell hardware automatically</li>
+            <li><strong>Binary &amp; Icon:</strong> <code>BANKO_Dell_Tuner.exe</code> (<code>dell_icon.ico</code>)</li>
+            <li><strong>Accent Theme:</strong> Launcher Dark (<code>#0D0F14</code>) + Neon Emerald (<code>#00FF66</code>)</li>
+            <li><strong>Launcher Deck:</strong> Sidebar nav, Hero Banner, 3 hover-glow profile cards</li>
             <li><strong>Presets:</strong> Eco (+0/+0), Balanced (+75/+150), Max Safe (+120/+250)</li>
           </ul>
         </div>
         <a
           class="btn btn-dell"
-          href="https://github.com/hankobanko391/BANKO-Safe-OC-Tuners/releases/download/v1.0.0/BANKO_Dell_Tuner.exe"
+          href="https://github.com/hankobanko391/BANKO-Safe-OC-Tuners/releases/download/v2.0.0/BANKO_Dell_Tuner.exe"
         >
           Download for Dell Laptops
         </a>
@@ -294,23 +295,23 @@
     </section>
 
     <section class="guardrails">
-      <h3>Built-In Hardware Safety Guardrails (Both Editions)</h3>
+      <h3>v2.0.0 Launcher Architecture &amp; Safety Guardrails</h3>
       <div class="grid-4">
         <div class="mini">
-          <strong>Zero Voltage Sliders</strong>
-          <span>Core voltage adjustment is omitted entirely to eliminate over-volting risk on mobile GPUs.</span>
+          <strong>Custom Emblem Icons</strong>
+          <span>Multi-resolution metallic &amp; neon circular desktop emblems embedded via <code>pyinstaller --icon</code>.</span>
         </div>
         <div class="mini">
-          <strong>82&deg;C Thermal Cut-Off</strong>
-          <span>Polls GPU temperature every 1000ms and automatically reverts to Stock / Eco Mode above 82&deg;C.</span>
+          <strong>Steam / Epic Aesthetic</strong>
+          <span>Dark sidebar navigation, live hardware lock badge, Hero Banner telemetry, and interactive profile cards.</span>
         </div>
         <div class="mini">
-          <strong>Safe Offset Ceilings</strong>
-          <span>Balanced Boost (+75/+150 MHz) and Max Safe OC (+120/+250 MHz) via NVAPI / nvidia-smi + Windows Power fallback.</span>
+          <strong>82&deg;C Auto Thermal Guard</strong>
+          <span>Polls GPU temp &amp; clock speeds every 1000ms and reverts to Stock / Eco Mode above 82&deg;C.</span>
         </div>
         <div class="mini">
-          <strong>1-Click Reset to Stock</strong>
-          <span>Prominent Reset button immediately restores factory clocks (-rgc/-rmc) and Balanced power plan.</span>
+          <strong>Zero-Voltage Safe Lock</strong>
+          <span>Voltage sliders omitted completely; prominent bottom-right RESET TO STOCK control always accessible.</span>
         </div>
       </div>
     </section>
@@ -320,7 +321,7 @@
         Source &amp; Releases:
         <a href="https://github.com/hankobanko391/BANKO-Safe-OC-Tuners">hankobanko391/BANKO-Safe-OC-Tuners</a>
         &bull;
-        <a href="https://github.com/hankobanko391/BANKO-Safe-OC-Tuners/releases/tag/v1.0.0">Release v1.0.0</a>
+        <a href="https://github.com/hankobanko391/BANKO-Safe-OC-Tuners/releases/tag/v2.0.0">Release v2.0.0</a>
       </p>
     </footer>
   </div>

@@ -1,8 +1,7 @@
-"""BANKO Dell Safe GPU & Performance Tuner (v1.0.0).
+"""BANKO Dell Safe GPU & Performance Tuner v2.0.0.
 
-Brand-locked Windows desktop tuning utility for Dell systems.
-Enforces strict WMI manufacturer verification, zero-voltage overclock presets,
-1000ms thermal cut-off (>82C), and one-click stock reset.
+Steam / Epic Games launcher-inspired Windows desktop tuning utility
+brand-locked to Dell systems via WMI.
 """
 
 from __future__ import annotations
@@ -12,6 +11,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import winreg
 from datetime import datetime
@@ -19,20 +19,23 @@ from typing import Optional
 
 import customtkinter as ctk
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "2.0.0"
 WINDOW_TITLE = f"BANKO Dell Safe GPU & Performance Tuner v{APP_VERSION}"
-WINDOW_WIDTH = 820
-WINDOW_HEIGHT = 620
+WINDOW_WIDTH = 1040
+WINDOW_HEIGHT = 660
 
-# Theme palette: Dark UI with Neon Green accents
+# Palette: Dark Launcher Aesthetic + Neon Emerald (#00FF66)
 BG_ROOT = "#0D0F14"
-BG_PANEL = "#141821"
-BG_CARD = "#1B202C"
-BORDER_SUBTLE = "#262D3D"
+BG_SIDEBAR = "#12151E"
+BG_HERO = "#141824"
+BG_CARD = "#161B26"
+BG_CARD_INNER = "#1C2230"
+BORDER_SUBTLE = "#262E40"
+BORDER_HOVER = "#5CFF9D"
 ACCENT = "#00FF66"
 ACCENT_HOVER = "#00CC52"
 ACCENT_TEXT = "#0D0F14"
-TEXT_PRIMARY = "#F1F5F9"
+TEXT_PRIMARY = "#F8FAFC"
 TEXT_MUTED = "#94A3B8"
 DANGER = "#FF3355"
 DANGER_HOVER = "#D92343"
@@ -50,35 +53,51 @@ CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 PRESETS = {
     "eco": {
         "key": "eco",
-        "name": "Eco / Cool Mode",
-        "subtitle": "Stock Clocks & Cool Acoustic Curve",
+        "tier": "SILENT BASELINE",
+        "name": "ECO / COOL MODE",
+        "subtitle": "Stock Clocks • Max Quiet",
         "core_offset": 0,
         "mem_offset": 0,
         "power_label": "Balanced",
         "power_guid": POWER_BALANCED_GUID,
-        "badge": "STOCK / ECO",
+        "description": "Factory default clocks with cool fan acoustics and balanced Windows power draw.",
     },
     "balanced": {
         "key": "balanced",
-        "name": "Balanced Boost",
-        "subtitle": "Safe Everyday Uplift + Power Fallback",
+        "tier": "RECOMMENDED",
+        "name": "BALANCED BOOST",
+        "subtitle": "+75 MHz Core / +150 MHz Mem • Recommended",
         "core_offset": 75,
         "mem_offset": 150,
         "power_label": "High Performance",
         "power_guid": POWER_HIGH_PERF_GUID,
-        "badge": "BALANCED BOOST",
+        "description": "Safe everyday uplift via nvidia-smi / NVAPI wrapper with High Performance fallback.",
     },
     "max": {
         "key": "max",
-        "name": "Max Safe OC",
-        "subtitle": "Capped Safe Ceiling + High Performance",
+        "tier": "PERFORMANCE CEILING",
+        "name": "MAX SAFE OC",
+        "subtitle": "+120 MHz Core / +250 MHz Mem • High Performance",
         "core_offset": 120,
         "mem_offset": 250,
         "power_label": "High Performance",
         "power_guid": POWER_HIGH_PERF_GUID,
-        "badge": "MAX SAFE OC",
+        "description": "Maximum zero-voltage safe offset ceiling locked to High Performance Windows power.",
     },
 }
+
+
+def resolve_asset_path(filename: str) -> Optional[str]:
+    """Locate bundled asset in PyInstaller _MEIPASS or script directory."""
+    candidates = []
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.append(os.path.join(meipass, filename))
+    candidates.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), filename))
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return None
 
 
 def _run_hidden(cmd: list[str], timeout: float = 4.0) -> tuple[int, str, str]:
@@ -137,6 +156,47 @@ def get_system_manufacturer() -> str:
     return "Unknown Manufacturer"
 
 
+def get_system_model() -> str:
+    """Read Win32_ComputerSystem.Model via WMI/CIM with safe fallbacks."""
+    rc, out, _ = _run_hidden(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            "(Get-CimInstance -ClassName Win32_ComputerSystem).Model",
+        ],
+        timeout=5.0,
+    )
+    if rc == 0 and out:
+        return out.splitlines()[0].strip()
+
+    rc, out, _ = _run_hidden(
+        ["wmic", "computersystem", "get", "model", "/value"],
+        timeout=4.0,
+    )
+    if rc == 0 and out:
+        for line in out.splitlines():
+            if "=" in line:
+                _, val = line.split("=", 1)
+                if val.strip():
+                    return val.strip()
+
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"HARDWARE\DESCRIPTION\System\BIOS",
+        ) as key:
+            val, _ = winreg.QueryValueEx(key, "SystemProductName")
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+    except OSError:
+        pass
+
+    return "Dell Windows Laptop"
+
+
 def is_dell_hardware(manufacturer: str) -> bool:
     """Return True only when Dell hardware is detected."""
     if os.environ.get("BANKO_FORCE_UNLOCK") == "1":
@@ -149,18 +209,17 @@ def find_nvidia_smi() -> Optional[str]:
     found = shutil.which("nvidia-smi")
     if found:
         return found
-    candidates = [
+    for path in (
         r"C:\Windows\System32\nvidia-smi.exe",
         r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe",
-    ]
-    for path in candidates:
+    ):
         if os.path.isfile(path):
             return path
     return None
 
 
 def check_nvapi_available() -> bool:
-    """Check whether NVAPI shared library can be loaded on 64-bit/32-bit Windows."""
+    """Check whether NVAPI shared library can be loaded on Windows."""
     for dll_name in ("nvapi64.dll", "nvapi.dll"):
         try:
             ctypes.WinDLL(dll_name)
@@ -218,23 +277,35 @@ class HardwareController:
                 return int(parts[0]), int(parts[1])
         return None
 
-    def read_gpu_temperature(self) -> tuple[Optional[float], str]:
-        """Return (temperature_celsius, source_label)."""
+    def read_gpu_telemetry(
+        self,
+    ) -> tuple[Optional[float], Optional[int], Optional[int], str]:
+        """Return (temp_c, core_clock_mhz, mem_clock_mhz, source_label)."""
         if self.nvidia_smi:
             rc, out, _ = _run_hidden(
                 [
                     self.nvidia_smi,
-                    "--query-gpu=temperature.gpu",
+                    "--query-gpu=temperature.gpu,clocks.current.graphics,clocks.current.memory",
                     "--format=csv,noheader,nounits",
                 ],
                 timeout=2.5,
             )
             if rc == 0 and out:
-                first = out.splitlines()[0].strip()
-                try:
-                    return float(first), "NVIDIA-SMI"
-                except ValueError:
-                    pass
+                parts = [p.strip() for p in out.splitlines()[0].split(",")]
+                temp_val: Optional[float] = None
+                core_val: Optional[int] = None
+                mem_val: Optional[int] = None
+                if len(parts) >= 1:
+                    try:
+                        temp_val = float(parts[0])
+                    except ValueError:
+                        pass
+                if len(parts) >= 2 and parts[1].isdigit():
+                    core_val = int(parts[1])
+                if len(parts) >= 3 and parts[2].isdigit():
+                    mem_val = int(parts[2])
+                if temp_val is not None:
+                    return temp_val, core_val, mem_val, "NVIDIA-SMI"
 
         rc, out, _ = _run_hidden(
             [
@@ -252,11 +323,16 @@ class HardwareController:
         )
         if rc == 0 and out:
             try:
-                return float(out.splitlines()[0].strip()), "ACPI Thermal"
+                return float(out.splitlines()[0].strip()), None, None, "ACPI Thermal"
             except ValueError:
                 pass
 
-        return None, "Unavailable"
+        return None, None, None, "Unavailable"
+
+    def read_gpu_temperature(self) -> tuple[Optional[float], str]:
+        """Return (temperature_celsius, source_label)."""
+        temp, _, _, src = self.read_gpu_telemetry()
+        return temp, src
 
     def _set_windows_power_plan(self, guid: str, label: str) -> tuple[bool, str]:
         rc, _, err = _run_hidden(["powercfg", "/setactive", guid], timeout=3.0)
@@ -346,7 +422,7 @@ class HardwareController:
 
 
 class BankoDellTunerApp(ctk.CTk):
-    """Main desktop window for BANKO Dell Safe GPU & Performance Tuner."""
+    """Steam / Epic Games launcher-styled desktop window for Dell Tuner."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -354,26 +430,39 @@ class BankoDellTunerApp(ctk.CTk):
 
         self.title(WINDOW_TITLE)
         self.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
-        self.resizable(False, False)
+        self.minsize(980, 620)
         self.configure(fg_color=BG_ROOT)
 
+        icon_path = resolve_asset_path("dell_icon.ico")
+        if icon_path:
+            try:
+                self.iconbitmap(icon_path)
+            except Exception:
+                pass
+
         self.manufacturer = get_system_manufacturer()
+        self.laptop_model = get_system_model()
         self.unlocked = is_dell_hardware(self.manufacturer)
 
         self.active_preset_key = "eco"
+        self.active_tab = "profiles"
         self.thermal_tripped = False
         self.monitoring_active = False
         self.controller: Optional[HardwareController] = None
+
+        self.nav_buttons: dict[str, ctk.CTkButton] = {}
+        self.tab_frames: dict[str, ctk.CTkFrame] = {}
         self.preset_cards: dict[str, ctk.CTkFrame] = {}
         self.preset_buttons: dict[str, ctk.CTkButton] = {}
+        self.hovered_card: Optional[str] = None
 
         if self.unlocked:
             self.controller = HardwareController()
-            self._build_unlocked_ui()
+            self._build_launcher_ui()
             self.monitoring_active = True
-            self._log(f"Verified OEM hardware: {self.manufacturer}")
+            self._log(f"Verified OEM hardware: {self.manufacturer} ({self.laptop_model})")
             self._log(f"Detected GPU: {self.controller.gpu_name}")
-            self._log("Thermal guardrail armed: Auto cut-off > 82°C (1000ms poll).")
+            self._log("Auto Thermal Guard armed: 82°C cut-off (1000ms telemetry poll).")
             self._poll_thermal_loop()
         else:
             self._build_lock_screen()
@@ -381,81 +470,117 @@ class BankoDellTunerApp(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_lock_screen(self) -> None:
-        outer = ctk.CTkFrame(
-            self,
-            fg_color=BG_PANEL,
+        shell = ctk.CTkFrame(self, fg_color=BG_ROOT)
+        shell.pack(fill="both", expand=True)
+
+        sidebar = ctk.CTkFrame(
+            shell,
+            width=230,
+            fg_color=BG_SIDEBAR,
+            corner_radius=0,
+            border_width=1,
+            border_color=BORDER_SUBTLE,
+        )
+        sidebar.pack(side="left", fill="y")
+        sidebar.pack_propagate(False)
+
+        self._build_sidebar_header(sidebar)
+
+        lock_badge = ctk.CTkFrame(
+            sidebar,
+            fg_color=BG_CARD_INNER,
+            border_width=1,
+            border_color=DANGER,
+            corner_radius=10,
+        )
+        lock_badge.pack(side="bottom", fill="x", padx=16, pady=18)
+        ctk.CTkLabel(
+            lock_badge,
+            text="HARDWARE LOCK STATUS",
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            text_color=TEXT_MUTED,
+        ).pack(pady=(10, 2))
+        ctk.CTkLabel(
+            lock_badge,
+            text="● BLOCKED: NON-DELL",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            text_color=DANGER,
+        ).pack(pady=(0, 10))
+
+        main = ctk.CTkFrame(shell, fg_color=BG_ROOT)
+        main.pack(side="right", fill="both", expand=True, padx=28, pady=28)
+
+        card = ctk.CTkFrame(
+            main,
+            fg_color=BG_HERO,
             border_width=2,
             border_color=DANGER,
             corner_radius=16,
         )
-        outer.pack(fill="both", expand=True, padx=28, pady=28)
+        card.pack(fill="both", expand=True)
 
-        badge = ctk.CTkLabel(
-            outer,
+        ctk.CTkLabel(
+            card,
             text="DELL HARDWARE GUARD",
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             text_color=ACCENT,
-            fg_color=BG_CARD,
+            fg_color=BG_CARD_INNER,
             corner_radius=8,
             padx=14,
             pady=6,
-        )
-        badge.pack(pady=(46, 18))
+        ).pack(pady=(58, 18))
 
-        title = ctk.CTkLabel(
-            outer,
+        ctk.CTkLabel(
+            card,
             text="🔒 HARDWARE SAFETY LOCK ENGAGED",
             font=ctk.CTkFont(family="Segoe UI", size=26, weight="bold"),
             text_color=DANGER,
-        )
-        title.pack(pady=(0, 12))
+        ).pack(pady=(0, 12))
 
-        subtitle = ctk.CTkLabel(
-            outer,
+        ctk.CTkLabel(
+            card,
             text=(
                 "BANKO Dell Tuner is strictly brand-locked to Dell systems.\n"
-                "Tuning controls are disabled on unsupported OEM hardware to prevent\n"
-                "improper power and thermal curve mismatches."
+                "All overclocking and power controls remain disabled on non-Dell hardware."
             ),
             font=ctk.CTkFont(family="Segoe UI", size=14),
             text_color=TEXT_PRIMARY,
             justify="center",
-        )
-        subtitle.pack(pady=(0, 26))
+        ).pack(pady=(0, 26))
 
-        info_card = ctk.CTkFrame(
-            outer,
-            fg_color=BG_CARD,
+        info = ctk.CTkFrame(
+            card,
+            fg_color=BG_CARD_INNER,
             border_width=1,
             border_color=ACCENT,
             corner_radius=12,
         )
-        info_card.pack(padx=90, fill="x", pady=(0, 32))
+        info.pack(padx=90, fill="x", pady=(0, 32))
 
         ctk.CTkLabel(
-            info_card,
-            text="DETECTED WMI Win32_ComputerSystem.Manufacturer",
-            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            info,
+            text="DETECTED WMI Win32_ComputerSystem",
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
             text_color=TEXT_MUTED,
-        ).pack(pady=(16, 4))
+        ).pack(pady=(14, 4))
 
         ctk.CTkLabel(
-            info_card,
-            text=self.manufacturer,
-            font=ctk.CTkFont(family="Consolas", size=18, weight="bold"),
+            info,
+            text=f"{self.manufacturer}  •  {self.laptop_model}",
+            font=ctk.CTkFont(family="Consolas", size=16, weight="bold"),
             text_color=WARNING,
-        ).pack(pady=(0, 8))
+        ).pack(pady=(0, 6))
 
         ctk.CTkLabel(
-            info_card,
+            info,
             text="Required Manufacturer: Dell (e.g., Dell Inc.)",
             font=ctk.CTkFont(family="Segoe UI", size=12),
             text_color=ACCENT,
-        ).pack(pady=(0, 16))
+        ).pack(pady=(0, 14))
 
-        exit_btn = ctk.CTkButton(
-            outer,
-            text="EXIT TUNER",
+        ctk.CTkButton(
+            card,
+            text="EXIT LAUNCHER",
             command=self._on_close,
             fg_color=DANGER,
             hover_color=DANGER_HOVER,
@@ -464,263 +589,621 @@ class BankoDellTunerApp(ctk.CTk):
             height=44,
             width=220,
             corner_radius=10,
+        ).pack()
+
+    def _build_sidebar_header(self, sidebar: ctk.CTkFrame) -> None:
+        brand_box = ctk.CTkFrame(sidebar, fg_color="transparent")
+        brand_box.pack(fill="x", padx=16, pady=(22, 18))
+
+        emblem = ctk.CTkFrame(
+            brand_box,
+            width=66,
+            height=66,
+            corner_radius=33,
+            fg_color=BG_ROOT,
+            border_width=3,
+            border_color=ACCENT,
         )
-        exit_btn.pack(pady=(0, 24))
+        emblem.pack(pady=(0, 10))
+        emblem.pack_propagate(False)
 
-    def _build_unlocked_ui(self) -> None:
+        ctk.CTkLabel(
+            emblem,
+            text="DELL",
+            font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
+            text_color=TEXT_PRIMARY,
+        ).place(relx=0.5, rely=0.5, anchor="center")
+
+        ctk.CTkLabel(
+            brand_box,
+            text="BANKO TUNER",
+            font=ctk.CTkFont(family="Segoe UI", size=17, weight="bold"),
+            text_color=TEXT_PRIMARY,
+        ).pack()
+
+        ctk.CTkLabel(
+            brand_box,
+            text=f"DELL EDITION • v{APP_VERSION}",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            text_color=ACCENT,
+        ).pack(pady=(2, 0))
+
+    def _build_launcher_ui(self) -> None:
         assert self.controller is not None
-        container = ctk.CTkFrame(self, fg_color=BG_ROOT)
-        container.pack(fill="both", expand=True, padx=16, pady=14)
+        shell = ctk.CTkFrame(self, fg_color=BG_ROOT)
+        shell.pack(fill="both", expand=True)
 
-        # 1. Header bar
-        header = ctk.CTkFrame(
-            container,
-            fg_color=BG_PANEL,
+        # --- Left Sidebar Navigation (#12151E) ---
+        sidebar = ctk.CTkFrame(
+            shell,
+            width=230,
+            fg_color=BG_SIDEBAR,
+            corner_radius=0,
             border_width=1,
             border_color=BORDER_SUBTLE,
-            corner_radius=12,
         )
-        header.pack(fill="x", pady=(0, 8))
+        sidebar.pack(side="left", fill="y")
+        sidebar.pack_propagate(False)
 
-        left_head = ctk.CTkFrame(header, fg_color="transparent")
-        left_head.pack(side="left", padx=14, pady=10)
+        self._build_sidebar_header(sidebar)
 
-        ctk.CTkLabel(
-            left_head,
-            text="BANKO DELL SAFE GPU & PERFORMANCE TUNER",
-            font=ctk.CTkFont(family="Segoe UI", size=17, weight="bold"),
-            text_color=ACCENT,
-        ).pack(anchor="w")
+        ctk.CTkFrame(sidebar, height=1, fg_color=BORDER_SUBTLE).pack(
+            fill="x", padx=18, pady=(0, 16)
+        )
 
         ctk.CTkLabel(
-            left_head,
-            text=f"OEM Verified: {self.manufacturer}  |  GPU: {self.controller.gpu_name}",
-            font=ctk.CTkFont(family="Segoe UI", size=11),
+            sidebar,
+            text="LAUNCHER NAVIGATION",
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
             text_color=TEXT_MUTED,
-        ).pack(anchor="w")
+        ).pack(anchor="w", padx=20, pady=(0, 8))
 
-        self.mode_badge = ctk.CTkLabel(
-            header,
-            text="ACTIVE: STOCK / ECO",
-            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
-            text_color=ACCENT_TEXT,
-            fg_color=ACCENT,
-            corner_radius=8,
-            padx=12,
-            pady=6,
-        )
-        self.mode_badge.pack(side="right", padx=14, pady=10)
+        for tab_key, label in (
+            ("profiles", "⚡  TUNING PROFILES"),
+            ("telemetry", "📊  LIVE TELEMETRY"),
+            ("safety", "🛡️  SAFETY & SPECS"),
+        ):
+            btn = ctk.CTkButton(
+                sidebar,
+                text=label,
+                anchor="w",
+                command=lambda k=tab_key: self._switch_tab(k),
+                fg_color="transparent",
+                hover_color=BG_CARD_INNER,
+                text_color=TEXT_MUTED,
+                font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+                height=42,
+                corner_radius=10,
+            )
+            btn.pack(fill="x", padx=14, pady=4)
+            self.nav_buttons[tab_key] = btn
 
-        # 2. Zero-voltage guardrail / thermal alert banner
-        self.banner_frame = ctk.CTkFrame(
-            container,
-            fg_color=BG_PANEL,
+        # Bottom Hardware Lock Status Badge
+        lock_badge = ctk.CTkFrame(
+            sidebar,
+            fg_color=BG_CARD_INNER,
             border_width=1,
             border_color=ACCENT,
-            corner_radius=8,
+            corner_radius=12,
         )
-        self.banner_frame.pack(fill="x", pady=(0, 8))
+        lock_badge.pack(side="bottom", fill="x", padx=16, pady=18)
 
-        self.banner_label = ctk.CTkLabel(
-            self.banner_frame,
-            text="ZERO-VOLTAGE LOCK: Core voltage sliders are omitted by design for hardware safety.",
-            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+        ctk.CTkLabel(
+            lock_badge,
+            text="HARDWARE LOCK STATUS",
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            text_color=TEXT_MUTED,
+        ).pack(pady=(10, 2))
+
+        ctk.CTkLabel(
+            lock_badge,
+            text="● VERIFIED: DELL",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
             text_color=ACCENT,
+        ).pack(pady=(0, 4))
+
+        ctk.CTkLabel(
+            lock_badge,
+            text=f"OEM: {self.manufacturer}",
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            text_color=TEXT_MUTED,
+        ).pack(pady=(0, 10))
+
+        # --- Right Main Content Workspace ---
+        workspace = ctk.CTkFrame(shell, fg_color=BG_ROOT)
+        workspace.pack(side="right", fill="both", expand=True)
+
+        # Bottom Sleek Status Bar
+        status_bar = ctk.CTkFrame(
+            workspace,
+            height=62,
+            fg_color=BG_SIDEBAR,
+            corner_radius=0,
+            border_width=1,
+            border_color=BORDER_SUBTLE,
         )
-        self.banner_label.pack(pady=6)
+        status_bar.pack(side="bottom", fill="x")
+        status_bar.pack_propagate(False)
 
-        # 3. Telemetry 4-card row
-        telemetry_row = ctk.CTkFrame(container, fg_color="transparent")
-        telemetry_row.pack(fill="x", pady=(0, 8))
-        telemetry_row.grid_columnconfigure((0, 1, 2, 3), weight=1, uniform="tele")
-
-        self.temp_value = self._make_telemetry_card(
-            telemetry_row, 0, "GPU TEMPERATURE", "-- °C", ACCENT
+        self.thermal_status_pill = ctk.CTkLabel(
+            status_bar,
+            text="🛡️  AUTO THERMAL GUARD: ARMED (82°C CUTOFF • 1000ms)",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            text_color=SUCCESS,
+            fg_color=BG_CARD_INNER,
+            corner_radius=8,
+            padx=14,
+            pady=8,
         )
-        self.offset_value = self._make_telemetry_card(
-            telemetry_row, 1, "CLOCK OFFSETS", "+0 / +0 MHz", TEXT_PRIMARY
-        )
-        self.power_value = self._make_telemetry_card(
-            telemetry_row, 2, "WINDOWS POWER", "Balanced", TEXT_PRIMARY
-        )
-        self.guard_value = self._make_telemetry_card(
-            telemetry_row, 3, "THERMAL CUT-OFF (>82°C)", "ARMED (1000ms)", SUCCESS
-        )
+        self.thermal_status_pill.pack(side="left", padx=20)
 
-        # 4. Safe Presets row
-        presets_row = ctk.CTkFrame(container, fg_color="transparent")
-        presets_row.pack(fill="x", pady=(0, 8))
-        presets_row.grid_columnconfigure((0, 1, 2), weight=1, uniform="preset")
-
-        for col, key in enumerate(("eco", "balanced", "max")):
-            self._make_preset_card(presets_row, col, PRESETS[key])
-
-        self._refresh_preset_selection()
-
-        # 5. Prominent RESET TO STOCK button
-        reset_btn = ctk.CTkButton(
-            container,
-            text="⟳  RESET TO STOCK — RESTORE DEFAULT CLOCKS & POWER",
+        ctk.CTkButton(
+            status_bar,
+            text="⟳  RESET TO STOCK",
             command=self._reset_to_stock,
             fg_color=DANGER,
             hover_color=DANGER_HOVER,
             text_color=TEXT_PRIMARY,
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            height=42,
+            height=38,
+            width=190,
             corner_radius=10,
-        )
-        reset_btn.pack(fill="x", pady=(0, 8))
+        ).pack(side="right", padx=20)
 
-        # 6. Activity Log
-        log_frame = ctk.CTkFrame(
-            container,
-            fg_color=BG_PANEL,
+        content = ctk.CTkFrame(workspace, fg_color=BG_ROOT)
+        content.pack(fill="both", expand=True, padx=22, pady=18)
+
+        # 1. Top Hero Banner
+        hero = ctk.CTkFrame(
+            content,
+            fg_color=BG_HERO,
+            border_width=1,
+            border_color=ACCENT,
+            corner_radius=14,
+        )
+        hero.pack(fill="x", pady=(0, 16))
+
+        hero_left = ctk.CTkFrame(hero, fg_color="transparent")
+        hero_left.pack(side="left", padx=20, pady=16)
+
+        ctk.CTkLabel(
+            hero_left,
+            text="DELL HARDWARE DECK • ZERO-VOLTAGE SAFE TUNING",
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            text_color=ACCENT,
+        ).pack(anchor="w")
+
+        ctk.CTkLabel(
+            hero_left,
+            text=self.laptop_model,
+            font=ctk.CTkFont(family="Segoe UI", size=22, weight="bold"),
+            text_color=TEXT_PRIMARY,
+        ).pack(anchor="w", pady=(2, 2))
+
+        self.hero_gpu_label = ctk.CTkLabel(
+            hero_left,
+            text=f"GPU: {self.controller.gpu_name}   •   Active Profile: ECO / COOL MODE",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            text_color=TEXT_MUTED,
+        )
+        self.hero_gpu_label.pack(anchor="w")
+
+        hero_right = ctk.CTkFrame(hero, fg_color="transparent")
+        hero_right.pack(side="right", padx=20, pady=14)
+
+        temp_pod = ctk.CTkFrame(
+            hero_right,
+            fg_color=BG_CARD_INNER,
             border_width=1,
             border_color=BORDER_SUBTLE,
             corner_radius=10,
         )
-        log_frame.pack(fill="both", expand=True)
-
+        temp_pod.pack(side="left", padx=(0, 10))
         ctk.CTkLabel(
-            log_frame,
-            text="LIVE TELEMETRY & GUARDRAIL LOG",
+            temp_pod,
+            text="GPU TEMP",
             font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
             text_color=TEXT_MUTED,
-        ).pack(anchor="w", padx=12, pady=(6, 2))
+        ).pack(padx=16, pady=(8, 0))
+        self.hero_temp_value = ctk.CTkLabel(
+            temp_pod,
+            text="-- °C",
+            font=ctk.CTkFont(family="Consolas", size=22, weight="bold"),
+            text_color=ACCENT,
+        )
+        self.hero_temp_value.pack(padx=16, pady=(0, 8))
+
+        clk_pod = ctk.CTkFrame(
+            hero_right,
+            fg_color=BG_CARD_INNER,
+            border_width=1,
+            border_color=BORDER_SUBTLE,
+            corner_radius=10,
+        )
+        clk_pod.pack(side="left")
+        ctk.CTkLabel(
+            clk_pod,
+            text="CLOCK SPEEDS (CORE / MEM)",
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            text_color=TEXT_MUTED,
+        ).pack(padx=16, pady=(8, 0))
+        self.hero_clock_value = ctk.CTkLabel(
+            clk_pod,
+            text="-- / -- MHz",
+            font=ctk.CTkFont(family="Consolas", size=18, weight="bold"),
+            text_color=TEXT_PRIMARY,
+        )
+        self.hero_clock_value.pack(padx=16, pady=(2, 10))
+
+        # 2. Tab Stack Container
+        self.tab_stack = ctk.CTkFrame(content, fg_color="transparent")
+        self.tab_stack.pack(fill="both", expand=True)
+
+        self._build_profiles_tab()
+        self._build_telemetry_tab()
+        self._build_safety_tab()
+
+        self._refresh_preset_selection()
+        self._switch_tab("profiles")
+
+    def _build_profiles_tab(self) -> None:
+        frame = ctk.CTkFrame(self.tab_stack, fg_color="transparent")
+        self.tab_frames["profiles"] = frame
+
+        header_row = ctk.CTkFrame(frame, fg_color="transparent")
+        header_row.pack(fill="x", pady=(0, 10))
+
+        ctk.CTkLabel(
+            header_row,
+            text="SELECT TUNING PROFILE",
+            font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
+            text_color=TEXT_PRIMARY,
+        ).pack(side="left")
+
+        ctk.CTkLabel(
+            header_row,
+            text="NO VOLTAGE SLIDERS • CAPPED SAFE OFFSETS • 82°C AUTO CUT-OFF",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            text_color=ACCENT,
+        ).pack(side="right")
+
+        cards_grid = ctk.CTkFrame(frame, fg_color="transparent")
+        cards_grid.pack(fill="both", expand=True)
+        cards_grid.grid_columnconfigure((0, 1, 2), weight=1, uniform="cards")
+        cards_grid.grid_rowconfigure(0, weight=1)
+
+        for col, key in enumerate(("eco", "balanced", "max")):
+            self._make_launcher_card(cards_grid, col, PRESETS[key])
+
+    def _make_launcher_card(
+        self, parent: ctk.CTkFrame, col: int, preset: dict
+    ) -> None:
+        key = preset["key"]
+        card = ctk.CTkFrame(
+            parent,
+            fg_color=BG_CARD,
+            border_width=2,
+            border_color=BORDER_SUBTLE,
+            corner_radius=14,
+        )
+        padx = (0, 12) if col < 2 else (0, 0)
+        card.grid(row=0, column=col, sticky="nsew", padx=padx)
+
+        tier = ctk.CTkLabel(
+            card,
+            text=preset["tier"],
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            text_color=ACCENT,
+            fg_color=BG_CARD_INNER,
+            corner_radius=6,
+            padx=10,
+            pady=4,
+        )
+        tier.pack(anchor="w", padx=18, pady=(18, 10))
+
+        title = ctk.CTkLabel(
+            card,
+            text=preset["name"],
+            font=ctk.CTkFont(family="Segoe UI", size=19, weight="bold"),
+            text_color=TEXT_PRIMARY,
+        )
+        title.pack(anchor="w", padx=18)
+
+        sub = ctk.CTkLabel(
+            card,
+            text=preset["subtitle"],
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            text_color=ACCENT,
+            wraplength=210,
+            justify="left",
+        )
+        sub.pack(anchor="w", padx=18, pady=(4, 10))
+
+        desc = ctk.CTkLabel(
+            card,
+            text=preset["description"],
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=TEXT_MUTED,
+            wraplength=210,
+            justify="left",
+        )
+        desc.pack(anchor="w", padx=18, pady=(0, 12))
+
+        specs_box = ctk.CTkFrame(
+            card,
+            fg_color=BG_CARD_INNER,
+            border_width=1,
+            border_color=BORDER_SUBTLE,
+            corner_radius=10,
+        )
+        specs_box.pack(fill="x", padx=16, pady=(0, 14))
+
+        core_txt = "Stock (+0 MHz)" if preset["core_offset"] == 0 else f"+{preset['core_offset']} MHz"
+        mem_txt = "Stock (+0 MHz)" if preset["mem_offset"] == 0 else f"+{preset['mem_offset']} MHz"
+
+        for spec_label, spec_val in (
+            ("Core Offset", core_txt),
+            ("Memory Offset", mem_txt),
+            ("Power Plan", preset["power_label"]),
+        ):
+            row = ctk.CTkFrame(specs_box, fg_color="transparent")
+            row.pack(fill="x", padx=12, pady=5)
+            ctk.CTkLabel(
+                row,
+                text=spec_label,
+                font=ctk.CTkFont(family="Segoe UI", size=11),
+                text_color=TEXT_MUTED,
+            ).pack(side="left")
+            ctk.CTkLabel(
+                row,
+                text=spec_val,
+                font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+                text_color=TEXT_PRIMARY,
+            ).pack(side="right")
+
+        btn = ctk.CTkButton(
+            card,
+            text="ACTIVATE",
+            command=lambda k=key: self._select_preset(k),
+            fg_color=BG_CARD_INNER,
+            hover_color=ACCENT_HOVER,
+            text_color=TEXT_PRIMARY,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            height=40,
+            corner_radius=20,
+        )
+        btn.pack(side="bottom", fill="x", padx=16, pady=16)
+
+        self.preset_cards[key] = card
+        self.preset_buttons[key] = btn
+
+        for widget in (card, tier, title, sub, desc, specs_box):
+            widget.bind("<Enter>", lambda _e, k=key: self._on_card_hover(k, True))
+            widget.bind("<Leave>", lambda _e, k=key: self._on_card_hover(k, False))
+
+    def _on_card_hover(self, key: str, entering: bool) -> None:
+        self.hovered_card = key if entering else None
+        card = self.preset_cards[key]
+        if key == self.active_preset_key:
+            card.configure(border_color=ACCENT)
+        elif entering:
+            card.configure(border_color=BORDER_HOVER)
+        else:
+            card.configure(border_color=BORDER_SUBTLE)
+
+    def _build_telemetry_tab(self) -> None:
+        frame = ctk.CTkFrame(self.tab_stack, fg_color="transparent")
+        self.tab_frames["telemetry"] = frame
+
+        stats = ctk.CTkFrame(frame, fg_color="transparent")
+        stats.pack(fill="x", pady=(0, 12))
+        stats.grid_columnconfigure((0, 1, 2, 3), weight=1, uniform="tstat")
+
+        self.tele_temp = self._make_stat_tile(stats, 0, "LIVE GPU TEMP", "-- °C", ACCENT)
+        self.tele_clocks = self._make_stat_tile(stats, 1, "CURRENT CLOCKS", "-- / -- MHz", TEXT_PRIMARY)
+        self.tele_offsets = self._make_stat_tile(stats, 2, "ACTIVE OFFSETS", "+0 / +0 MHz", ACCENT)
+        self.tele_power = self._make_stat_tile(stats, 3, "WINDOWS POWER", "Balanced", TEXT_PRIMARY)
+
+        bar_card = ctk.CTkFrame(
+            frame,
+            fg_color=BG_CARD,
+            border_width=1,
+            border_color=BORDER_SUBTLE,
+            corner_radius=12,
+        )
+        bar_card.pack(fill="x", pady=(0, 12))
+
+        bar_top = ctk.CTkFrame(bar_card, fg_color="transparent")
+        bar_top.pack(fill="x", padx=16, pady=(10, 6))
+        ctk.CTkLabel(
+            bar_top,
+            text="THERMAL HEADROOM TO 82°C CUT-OFF CEILING",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            text_color=TEXT_MUTED,
+        ).pack(side="left")
+        self.thermal_pct_label = ctk.CTkLabel(
+            bar_top,
+            text="Waiting for sensor...",
+            font=ctk.CTkFont(family="Consolas", size=11, weight="bold"),
+            text_color=ACCENT,
+        )
+        self.thermal_pct_label.pack(side="right")
+
+        self.thermal_progress = ctk.CTkProgressBar(
+            bar_card,
+            height=12,
+            corner_radius=6,
+            fg_color=BG_CARD_INNER,
+            progress_color=ACCENT,
+        )
+        self.thermal_progress.pack(fill="x", padx=16, pady=(0, 12))
+        self.thermal_progress.set(0.0)
+
+        log_card = ctk.CTkFrame(
+            frame,
+            fg_color=BG_CARD,
+            border_width=1,
+            border_color=BORDER_SUBTLE,
+            corner_radius=12,
+        )
+        log_card.pack(fill="both", expand=True)
+
+        ctk.CTkLabel(
+            log_card,
+            text="LIVE TELEMETRY & GUARDRAIL EVENT LOG",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            text_color=TEXT_MUTED,
+        ).pack(anchor="w", padx=16, pady=(10, 4))
 
         self.log_box = ctk.CTkTextbox(
-            log_frame,
+            log_card,
             fg_color=BG_ROOT,
             text_color=TEXT_PRIMARY,
             font=ctk.CTkFont(family="Consolas", size=11),
             corner_radius=8,
             border_width=0,
-            activate_scrollbars=True,
         )
-        self.log_box.pack(fill="both", expand=True, padx=10, pady=(0, 8))
+        self.log_box.pack(fill="both", expand=True, padx=14, pady=(0, 12))
         self.log_box.configure(state="disabled")
 
-    def _make_telemetry_card(
+    def _make_stat_tile(
         self,
         parent: ctk.CTkFrame,
         col: int,
         label: str,
         initial: str,
-        value_color: str,
+        color: str,
     ) -> ctk.CTkLabel:
-        card = ctk.CTkFrame(
+        tile = ctk.CTkFrame(
             parent,
-            fg_color=BG_PANEL,
-            border_width=1,
-            border_color=BORDER_SUBTLE,
-            corner_radius=10,
-        )
-        padx = (0, 6) if col < 3 else (0, 0)
-        card.grid(row=0, column=col, sticky="nsew", padx=padx)
-
-        ctk.CTkLabel(
-            card,
-            text=label,
-            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
-            text_color=TEXT_MUTED,
-        ).pack(pady=(10, 2))
-
-        val_lbl = ctk.CTkLabel(
-            card,
-            text=initial,
-            font=ctk.CTkFont(family="Consolas", size=15, weight="bold"),
-            text_color=value_color,
-        )
-        val_lbl.pack(pady=(0, 12))
-        return val_lbl
-
-    def _make_preset_card(
-        self, parent: ctk.CTkFrame, col: int, preset: dict
-    ) -> None:
-        card = ctk.CTkFrame(
-            parent,
-            fg_color=BG_PANEL,
+            fg_color=BG_CARD,
             border_width=1,
             border_color=BORDER_SUBTLE,
             corner_radius=12,
         )
-        padx = (0, 8) if col < 2 else (0, 0)
-        card.grid(row=0, column=col, sticky="nsew", padx=padx)
+        padx = (0, 10) if col < 3 else (0, 0)
+        tile.grid(row=0, column=col, sticky="nsew", padx=padx)
 
         ctk.CTkLabel(
-            card,
-            text=preset["name"],
-            font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
-            text_color=TEXT_PRIMARY,
-        ).pack(pady=(14, 2))
-
-        ctk.CTkLabel(
-            card,
-            text=preset["subtitle"],
-            font=ctk.CTkFont(family="Segoe UI", size=11),
+            tile,
+            text=label,
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
             text_color=TEXT_MUTED,
-        ).pack(pady=(0, 10))
+        ).pack(pady=(12, 4))
 
-        offset_text = (
-            "Stock Clocks (+0 / +0 MHz)"
-            if preset["core_offset"] == 0
-            else f"+{preset['core_offset']} MHz Core  |  +{preset['mem_offset']} MHz Mem"
+        val = ctk.CTkLabel(
+            tile,
+            text=initial,
+            font=ctk.CTkFont(family="Consolas", size=15, weight="bold"),
+            text_color=color,
         )
-        ctk.CTkLabel(
-            card,
-            text=offset_text,
-            font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
-            text_color=ACCENT,
-        ).pack(pady=(0, 4))
+        val.pack(pady=(0, 12))
+        return val
 
-        ctk.CTkLabel(
-            card,
-            text=f"Power Plan: {preset['power_label']}",
-            font=ctk.CTkFont(family="Segoe UI", size=11),
-            text_color=TEXT_MUTED,
-        ).pack(pady=(0, 14))
+    def _build_safety_tab(self) -> None:
+        assert self.controller is not None
+        frame = ctk.CTkFrame(self.tab_stack, fg_color="transparent")
+        self.tab_frames["safety"] = frame
 
-        btn = ctk.CTkButton(
-            card,
-            text=f"APPLY {preset['badge']}",
-            command=lambda k=preset["key"]: self._select_preset(k),
+        panel = ctk.CTkFrame(
+            frame,
             fg_color=BG_CARD,
-            hover_color=ACCENT_HOVER,
-            text_color=TEXT_PRIMARY,
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            height=36,
-            corner_radius=8,
+            border_width=1,
+            border_color=BORDER_SUBTLE,
+            corner_radius=14,
         )
-        btn.pack(fill="x", padx=14, pady=(0, 14))
+        panel.pack(fill="both", expand=True)
 
-        self.preset_cards[preset["key"]] = card
-        self.preset_buttons[preset["key"]] = btn
+        ctk.CTkLabel(
+            panel,
+            text="HARDWARE GUARDRAILS & SYSTEM SPECIFICATION",
+            font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
+            text_color=ACCENT,
+        ).pack(anchor="w", padx=22, pady=(18, 12))
+
+        max_clk_str = (
+            f"{self.controller.stock_max_clocks[0]} MHz Core / {self.controller.stock_max_clocks[1]} MHz Mem"
+            if self.controller.stock_max_clocks
+            else "Driver-Managed Dynamic Boost"
+        )
+        rows = [
+            ("WMI OEM Verification", f"UNLOCKED — {self.manufacturer} (Dell Brand Lock)"),
+            ("Detected Laptop Model", self.laptop_model),
+            ("Detected GPU Adapter", self.controller.gpu_name),
+            ("Stock Max GPU Clocks", max_clk_str),
+            (
+                "Tuning Backend",
+                f"nvidia-smi: {'Detected' if self.controller.nvidia_smi else 'Not Found'} | "
+                f"NVAPI: {'Detected' if self.controller.nvapi_ready else 'Unavailable'} | PowerCfg Fallback",
+            ),
+            ("Voltage Safety Lock", "STRICTLY ENFORCED — Core voltage sliders disabled by design"),
+            ("Auto Thermal Guard", "1000ms polling • Auto-reverts to Stock / Eco Mode above 82°C"),
+        ]
+
+        for label, value in rows:
+            row = ctk.CTkFrame(
+                panel,
+                fg_color=BG_CARD_INNER,
+                corner_radius=8,
+            )
+            row.pack(fill="x", padx=22, pady=5)
+            ctk.CTkLabel(
+                row,
+                text=label,
+                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                text_color=TEXT_MUTED,
+            ).pack(side="left", padx=14, pady=9)
+            ctk.CTkLabel(
+                row,
+                text=value,
+                font=ctk.CTkFont(family="Consolas", size=12, weight="bold"),
+                text_color=TEXT_PRIMARY,
+            ).pack(side="right", padx=14, pady=9)
+
+    def _switch_tab(self, tab_key: str) -> None:
+        self.active_tab = tab_key
+        for key, frame in self.tab_frames.items():
+            if key == tab_key:
+                frame.pack(fill="both", expand=True)
+            else:
+                frame.pack_forget()
+
+        for key, btn in self.nav_buttons.items():
+            if key == tab_key:
+                btn.configure(fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=ACCENT_TEXT)
+            else:
+                btn.configure(fg_color="transparent", hover_color=BG_CARD_INNER, text_color=TEXT_MUTED)
 
     def _refresh_preset_selection(self) -> None:
+        assert self.controller is not None
         preset = PRESETS[self.active_preset_key]
-        self.mode_badge.configure(text=f"ACTIVE: {preset['badge']}")
-        self.offset_value.configure(
+        self.hero_gpu_label.configure(
+            text=f"GPU: {self.controller.gpu_name}   •   Active Profile: {preset['name']}"
+        )
+        self.tele_offsets.configure(
             text=f"+{preset['core_offset']} / +{preset['mem_offset']} MHz"
         )
-        self.power_value.configure(text=preset["power_label"])
+        self.tele_power.configure(text=preset["power_label"])
 
         for key, card in self.preset_cards.items():
             btn = self.preset_buttons[key]
             if key == self.active_preset_key:
-                card.configure(border_color=ACCENT, border_width=2)
+                card.configure(border_color=ACCENT)
                 btn.configure(
                     fg_color=ACCENT,
                     hover_color=ACCENT_HOVER,
                     text_color=ACCENT_TEXT,
-                    text=f"✓ {PRESETS[key]['badge']} ACTIVE",
+                    text="✓  APPLIED",
                 )
             else:
-                card.configure(border_color=BORDER_SUBTLE, border_width=1)
+                card.configure(
+                    border_color=BORDER_HOVER if self.hovered_card == key else BORDER_SUBTLE
+                )
                 btn.configure(
-                    fg_color=BG_CARD,
+                    fg_color=BG_CARD_INNER,
                     hover_color=ACCENT_HOVER,
                     text_color=TEXT_PRIMARY,
-                    text=f"APPLY {PRESETS[key]['badge']}",
+                    text="ACTIVATE",
                 )
 
     def _select_preset(self, key: str, reason: str = "User selection") -> None:
@@ -728,14 +1211,13 @@ class BankoDellTunerApp(ctk.CTk):
             return
         preset = PRESETS[key]
         self.active_preset_key = key
+
         if reason == "User selection" and self.thermal_tripped:
             self.thermal_tripped = False
-            self.banner_frame.configure(border_color=ACCENT)
-            self.banner_label.configure(
-                text="ZERO-VOLTAGE LOCK: Core voltage sliders are omitted by design for hardware safety.",
-                text_color=ACCENT,
+            self.thermal_status_pill.configure(
+                text="🛡️  AUTO THERMAL GUARD: ARMED (82°C CUTOFF • 1000ms)",
+                text_color=SUCCESS,
             )
-            self.guard_value.configure(text="ARMED (1000ms)", text_color=SUCCESS)
 
         self._refresh_preset_selection()
 
@@ -751,18 +1233,16 @@ class BankoDellTunerApp(ctk.CTk):
     def _on_preset_applied(
         self, preset_name: str, reason: str, logs: list[str]
     ) -> None:
-        self._log(f"[{reason}] Applied preset: {preset_name}")
+        self._log(f"[{reason}] Activated profile: {preset_name}")
         for entry in logs:
             self._log(f"  -> {entry}")
 
     def _reset_to_stock(self) -> None:
         self.thermal_tripped = False
-        self.banner_frame.configure(border_color=ACCENT)
-        self.banner_label.configure(
-            text="ZERO-VOLTAGE LOCK: Core voltage sliders are omitted by design for hardware safety.",
-            text_color=ACCENT,
+        self.thermal_status_pill.configure(
+            text="🛡️  AUTO THERMAL GUARD: ARMED (82°C CUTOFF • 1000ms)",
+            text_color=SUCCESS,
         )
-        self.guard_value.configure(text="ARMED (1000ms)", text_color=SUCCESS)
         self._select_preset("eco", reason="Manual Reset to Stock")
 
     def _poll_thermal_loop(self) -> None:
@@ -770,15 +1250,35 @@ class BankoDellTunerApp(ctk.CTk):
             return
 
         def poll_worker() -> None:
-            temp, src = self.controller.read_gpu_temperature()  # type: ignore[union-attr]
-            self.after(0, lambda: self._handle_temp_reading(temp, src))
+            temp, core_mhz, mem_mhz, src = self.controller.read_gpu_telemetry()  # type: ignore[union-attr]
+            self.after(0, lambda: self._handle_telemetry_reading(temp, core_mhz, mem_mhz, src))
 
         threading.Thread(target=poll_worker, daemon=True).start()
         self.after(POLL_INTERVAL_MS, self._poll_thermal_loop)
 
     def _handle_temp_reading(self, temp: Optional[float], source: str) -> None:
+        self._handle_telemetry_reading(temp, None, None, source)
+
+    def _handle_telemetry_reading(
+        self,
+        temp: Optional[float],
+        core_mhz: Optional[int],
+        mem_mhz: Optional[int],
+        source: str,
+    ) -> None:
+        if core_mhz is not None and mem_mhz is not None:
+            clk_txt = f"{core_mhz} / {mem_mhz} MHz"
+        else:
+            preset = PRESETS[self.active_preset_key]
+            clk_txt = f"+{preset['core_offset']} / +{preset['mem_offset']} MHz"
+        self.hero_clock_value.configure(text=clk_txt)
+        self.tele_clocks.configure(text=clk_txt)
+
         if temp is None:
-            self.temp_value.configure(text="N/A", text_color=TEXT_MUTED)
+            self.hero_temp_value.configure(text="N/A", text_color=TEXT_MUTED)
+            self.tele_temp.configure(text="N/A", text_color=TEXT_MUTED)
+            self.thermal_pct_label.configure(text="No thermal sensor", text_color=TEXT_MUTED)
+            self.thermal_progress.set(0.0)
             return
 
         if temp > THERMAL_CUTOFF_C:
@@ -788,20 +1288,27 @@ class BankoDellTunerApp(ctk.CTk):
         else:
             color = ACCENT
 
-        self.temp_value.configure(text=f"{temp:.1f} °C ({source})", text_color=color)
+        self.hero_temp_value.configure(text=f"{temp:.1f} °C", text_color=color)
+        self.tele_temp.configure(text=f"{temp:.1f} °C ({source})", text_color=color)
+
+        ratio = max(0.0, min(1.0, temp / THERMAL_CUTOFF_C))
+        self.thermal_progress.set(ratio)
+        self.thermal_progress.configure(progress_color=color)
+        self.thermal_pct_label.configure(
+            text=f"{temp:.1f}°C / {THERMAL_CUTOFF_C:.0f}°C ({ratio * 100:.0f}%)",
+            text_color=color,
+        )
 
         if temp > THERMAL_CUTOFF_C and (
             self.active_preset_key != "eco" or not self.thermal_tripped
         ):
             self.thermal_tripped = True
-            self.banner_frame.configure(border_color=DANGER)
-            self.banner_label.configure(
-                text=f"⚠ THERMAL CUT-OFF TRIGGERED ({temp:.1f}°C > 82°C) — REVERTED TO STOCK/ECO MODE",
+            self.thermal_status_pill.configure(
+                text=f"⚠  THERMAL CUTOFF ({temp:.1f}°C > 82°C) — REVERTED TO STOCK",
                 text_color=DANGER,
             )
-            self.guard_value.configure(text="TRIPPED (>82°C)", text_color=DANGER)
             self._log(
-                f"CRITICAL: GPU temp {temp:.1f}°C exceeded 82°C ceiling! Auto-reverting to Stock/Eco Mode."
+                f"CRITICAL: GPU temp {temp:.1f}°C exceeded 82°C ceiling! Reverting to Stock/Eco Mode."
             )
             self._select_preset("eco", reason="Auto Thermal Cut-off (>82°C)")
 
